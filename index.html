@@ -1,0 +1,438 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PIB vs Gasto de Turismo · 2019</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+<style>
+  :root{
+    --bg:           #fafafa;
+    --surface:      #ffffff;
+    --ink:          #14141a;
+    --ink-soft:     #6f7178;
+    --ink-faint:    #a8aab1;
+    --line:         #e7e8eb;
+    --line-strong:  #d3d5da;
+    --accent:       #2952e3;
+    --accent-bg:    #2952e30f;
+    --spain:        #14141a;
+  }
+
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--bg);
+    color:var(--ink);
+    font-family:'Inter', sans-serif;
+    -webkit-font-smoothing:antialiased;
+    line-height:1.5;
+  }
+
+  .wrap{
+    max-width:1220px;
+    margin:0 auto;
+    padding:40px 24px 72px;
+  }
+
+  header{ margin-bottom:28px; }
+  .kicker{
+    font-family:'JetBrains Mono', monospace;
+    font-size:11px;
+    letter-spacing:.06em;
+    text-transform:uppercase;
+    color:var(--ink-faint);
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    margin-bottom:18px;
+    padding-bottom:14px;
+    border-bottom:1px solid var(--line);
+  }
+  .kicker .dot-flow{ display:inline-flex; align-items:center; gap:5px; }
+  .kicker .dot-flow span{ width:5px;height:5px;border-radius:50%; background:var(--accent); display:inline-block; }
+  h1{
+    font-family:'Space Grotesk', sans-serif;
+    font-weight:600;
+    font-size:clamp(26px, 3.6vw, 38px);
+    line-height:1.15;
+    margin:0 0 10px;
+    letter-spacing:-0.02em;
+    max-width:980px;
+  }
+  .subhead{ font-size:15px; color:var(--ink-soft); max-width:760px; margin:0; }
+
+  .stage{
+    display:grid;
+    grid-template-columns: 1fr;
+    gap:1px;
+    background:var(--line);
+    border:1px solid var(--line);
+  }
+
+  .panel{ background:var(--surface); }
+
+  .chart-panel{padding:22px 22px 16px;}
+  .chart-head{
+    display:flex; justify-content:space-between; align-items:baseline;
+    flex-wrap:wrap; gap:8px; margin-bottom:4px;
+  }
+  .chart-title{ font-family:'Space Grotesk', sans-serif; font-size:15px; font-weight:600; letter-spacing:-0.01em; }
+  .chart-note{ font-family:'JetBrains Mono', monospace; font-size:10.5px; color:var(--ink-faint); letter-spacing:.02em; }
+  #chart{width:100%; display:block;}
+
+  .axis text{ font-family:'JetBrains Mono', monospace; font-size:10.5px; fill:var(--ink-faint); }
+  .axis path, .axis line{stroke:var(--line-strong);}
+  .gridline{stroke:var(--line); opacity:1;}
+
+  /* --- Scatter styles --- */
+  .scatter-dot {
+    stroke-width: 1.5;
+    transition: r 0.15s ease, stroke-width 0.15s ease, opacity 0.2s ease;
+  }
+  .scatter-dot.dim { opacity: 0.15; }
+  .scatter-dot.active { opacity: 1 !important; stroke: var(--ink) !important; stroke-width: 2.5; r: 7.5; }
+
+  .hover-dot{ fill:none; stroke:var(--ink); stroke-width:2; }
+  .voronoi-overlay{ fill:none; pointer-events:all; }
+  .hairline{ stroke:var(--ink); stroke-width:1; stroke-dasharray: 4,4; opacity:0; pointer-events:none; }
+
+  .tooltip{
+    position:absolute; pointer-events:none;
+    background:var(--ink); color:#fff;
+    padding:10px 14px; font-size:12.5px;
+    border-radius:6px; line-height:1.45;
+    box-shadow:0 8px 24px rgba(20,20,26,.18);
+    z-index:20; max-width:260px;
+  }
+  .tooltip .t-name{font-weight:600; display:flex; align-items:center; gap:6px; font-family:'Space Grotesk', sans-serif;}
+  .tooltip .t-code{font-family:'JetBrains Mono', monospace; color:#a8aab1; font-size:11px; margin-left: 2px;}
+  .tooltip .t-val{font-family:'JetBrains Mono', monospace; margin-top:6px; font-size:12px; display:flex; justify-content:space-between;}
+  .tooltip .t-sub{font-family:'JetBrains Mono', monospace; color:#9aa0b8; font-size:12px; margin-top:2px; display:flex; justify-content:space-between;}
+
+  /* ---------- Legend ---------- */
+  .legend{
+    display:flex; flex-wrap:wrap; gap:6px;
+    margin-top:18px; padding-top:16px; border-top:1px solid var(--line);
+  }
+  .legend-item{
+    display:flex; align-items:center; gap:6px;
+    font-size:11.5px; font-family:'JetBrains Mono', monospace;
+    cursor:pointer; padding:5px 9px 5px 6px; border-radius:20px;
+    border:1px solid var(--line); user-select:none;
+    transition: border-color .15s ease, opacity .2s ease, background .15s ease;
+    background:var(--surface);
+  }
+  .legend-item:hover{ border-color:var(--line-strong); }
+  .legend-item.dim{ opacity:.32; }
+  .legend-item.active{ border-color:var(--accent); background:var(--accent-bg); color:var(--accent); font-weight:600; }
+  
+  .legend-reset{
+    margin-left:auto; font-family:'JetBrains Mono', monospace; font-size:11px;
+    color:var(--ink-soft); background:none; border:1px solid var(--line);
+    padding:6px 12px; cursor:pointer; border-radius:20px;
+  }
+  .legend-reset:hover{ border-color:var(--ink); color:var(--ink); }
+
+  .hint{ font-size:11.5px; color:var(--ink-faint); margin-top:12px; }
+
+  .meta{
+    margin-top:1px; display:grid; grid-template-columns:1fr; gap:1px;
+    background:var(--line); border:1px solid var(--line); border-top:none;
+  }
+  .meta-block{ background:var(--surface); padding:20px 22px; font-size:12.5px; color:var(--ink-soft); line-height:1.6; }
+  .meta-block h3{
+    font-family:'Space Grotesk', sans-serif; font-size:11px; font-weight:600;
+    text-transform:uppercase; letter-spacing:.05em; color:var(--ink); margin:0 0 10px;
+  }
+  .meta-block p{margin:0 0 8px;}
+  .meta-block a{color:var(--accent); text-decoration:none;}
+  .meta-block a:hover{text-decoration:underline;}
+
+  svg.flag-icon{ display:block; flex:none; }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+
+  <header>
+    <div class="kicker">
+      <span class="dot-flow"><span></span>Macroeconomía y Turismo · 2019</span>
+      <span>Grupo Banco Mundial</span>
+    </div>
+    <h1>Relación del PIB con el Gasto de turismo internacional</h1>
+    <p class="subhead">Análisis bivariado en Billones de Dólares. Explora la capacidad de captación de divisas turísticas en relación con el tamaño total de la economía de cada país latinoamericano y España.</p>
+  </header>
+
+  <div class="stage">
+    <div class="panel chart-panel">
+      <div class="chart-head">
+        <div class="chart-title">Dispersión: PIB vs Gasto Turístico</div>
+        <div class="chart-note">B = BILLONES DE DÓLARES (MILES DE MILLONES)</div>
+      </div>
+      
+      <div id="chart"></div>
+      
+      <div class="legend" id="legend"></div>
+      <p class="hint">Pasa el cursor sobre los puntos en la gráfica para visualizar los valores exactos, o selecciona países en la leyenda para aislarlos visualmente.</p>
+    </div>
+  </div>
+
+  <div class="meta">
+    <div class="meta-block">
+      <h3>Fuentes Bibliográficas</h3>
+      <p>
+        * <a href="https://datos.bancomundial.org/indicator/ST.INT.XPND.CD?end=2019&start=2019&view=map&year=2019" target="_blank">Gasto de turismo internacional (ST.INT.XPND.CD)</a> — Grupo Banco Mundial, 2026.
+      </p>
+      <p style="margin-bottom:0;">
+        * <a href="https://datos.bancomundial.org/indicador/SI.POV.GINI?locations=ES" target="_blank">Base de datos de indicadores (España y otros)</a> — Grupo Banco Mundial, 2026.
+      </p>
+    </div>
+  </div>
+
+</div>
+
+<div class="tooltip" id="tooltip" style="display:none;"></div>
+
+<script>
+// --- DATOS HOMOLOGADOS CON TU CÓDIGO ANTERIOR ---
+const rawData = [
+  { id: "Argentina", code: "ARG", pib: 447.76, turismo: 9.85 },
+  { id: "Bolivia", code: "BOL", pib: 49.06, turismo: 1.11 },
+  { id: "Brazil", code: "BRA", pib: 1873.29, turismo: 21.18 },
+  { id: "Chile", code: "CHL", pib: 278.29, turismo: 3.14 },
+  { id: "Colombia", code: "COL", pib: 323.03, turismo: 5.66 },
+  { id: "Costa Rica", code: "CRI", pib: 64.42, turismo: 1.33 },
+  { id: "Dominican Republic", code: "DOM", pib: 89.15, turismo: 1.06 },
+  { id: "Ecuador", code: "ECU", pib: 107.60, turismo: 1.65 },
+  { id: "El Salvador", code: "SLV", pib: 26.88, turismo: 0.50 },
+  { id: "Guatemala", code: "GTM", pib: 77.17, turismo: 1.13 },
+  { id: "Honduras", code: "HND", pib: 24.88, turismo: 0.66 },
+  { id: "Mexico", code: "MEX", pib: 1304.11, turismo: 12.30 },
+  { id: "Nicaragua", code: "NIC", pib: 12.70, turismo: 0.31 },
+  { id: "Panama", code: "PAN", pib: 69.78, turismo: 1.62 },
+  { id: "Paraguay", code: "PRY", pib: 37.93, turismo: 0.55 },
+  { id: "Peru", code: "PER", pib: 228.35, turismo: 3.63 },
+  { id: "Uruguay", code: "URY", pib: 62.22, turismo: 1.42 },
+  { id: "Venezuela", code: "VEN", pib: 73.01, turismo: 0.00 },
+  { id: "Spain", code: "ESP", pib: 1403.50, turismo: 0.00 }
+];
+
+// --- METADATA (Colores y Nombres del archivo de Gini) ---
+const COUNTRY_META = {
+  "Argentina": {"flag": "🇦🇷", "line": "#345EB5", "abbr": "AR", "display": "Argentina"}, 
+  "Bolivia": {"flag": "🇧🇴", "line": "#C79B41", "abbr": "BO", "display": "Bolivia"}, 
+  "Brazil": {"flag": "🇧🇷", "line": "#34B560", "abbr": "BR", "display": "Brasil"}, 
+  "Chile": {"flag": "🇨🇱", "line": "#6034B5", "abbr": "CL", "display": "Chile"}, 
+  "Colombia": {"flag": "🇨🇴", "line": "#41C742", "abbr": "CO", "display": "Colombia"}, 
+  "Costa Rica": {"flag": "🇨🇷", "line": "#0F8B6C", "abbr": "CR", "display": "Costa Rica"}, 
+  "Dominican Republic": {"flag": "🇩🇴", "line": "#C74241", "abbr": "RD", "display": "Rep. Dominicana"}, 
+  "Ecuador": {"flag": "🇪🇨", "line": "#5EB534", "abbr": "EC", "display": "Ecuador"}, 
+  "El Salvador": {"flag": "🇸🇻", "line": "#34B4B5", "abbr": "SV", "display": "El Salvador"}, 
+  "Guatemala": {"flag": "🇬🇹", "line": "#C7419A", "abbr": "GT", "display": "Guatemala"}, 
+  "Honduras": {"flag": "🇭🇳", "line": "#419AC7", "abbr": "HN", "display": "Honduras"}, 
+  "Mexico": {"flag": "🇲🇽", "line": "#41C79B", "abbr": "MX", "display": "México"}, 
+  "Nicaragua": {"flag": "🇳🇮", "line": "#9B41C7", "abbr": "NI", "display": "Nicaragua"}, 
+  "Panama": {"flag": "🇵🇦", "line": "#B5345E", "abbr": "PA", "display": "Panamá"}, 
+  "Paraguay": {"flag": "🇵🇾", "line": "#B56034", "abbr": "PY", "display": "Paraguay"}, 
+  "Peru": {"flag": "🇵🇪", "line": "#B4B534", "abbr": "PE", "display": "Perú"}, 
+  "Uruguay": {"flag": "🇺🇾", "line": "#4241C7", "abbr": "UY", "display": "Uruguay"}, 
+  "Venezuela": {"flag": "🇻🇪", "line": "#9AC741", "abbr": "VE", "display": "Venezuela"}, 
+  "Spain": {"flag": "🇪🇸", "line": "#1A1A1F", "abbr": "ES", "display": "España"}
+};
+
+function metaOf(name){ return COUNTRY_META[name] || {}; }
+function colorOf(name){ return metaOf(name).line || "#999"; }
+function abbrOf(name){ return metaOf(name).abbr || name.slice(0,2).toUpperCase(); }
+function displayOf(name){ return metaOf(name).display || name; }
+
+// --- GENERADOR DE BANDERAS SVG ---
+function flagSVG(name, w, h){
+  const stripeColors = {
+    Argentina: ["#74ACDF","#FFFFFF","#74ACDF"], Bolivia: ["#D52B1E","#F9E300","#007934"], Brazil: ["#009C3B"],
+    Chile: ["#FFFFFF","#D52B1E"], Colombia: ["#FCD116","#003893","#CE1126"], "Costa Rica": ["#002B7F","#FFFFFF","#CE1126","#FFFFFF","#002B7F"],
+    "Dominican Republic": ["#002D62","#FFFFFF","#CE1126","#FFFFFF"], Ecuador: ["#FFDD00","#034EA2","#ED1C24"], "El Salvador": ["#0047AB","#FFFFFF","#0047AB"],
+    Guatemala: ["#4997D0","#FFFFFF","#4997D0"], Honduras: ["#0073CF","#FFFFFF","#0073CF"], Mexico: ["#006341","#FFFFFF","#CE1126"],
+    Nicaragua: ["#0067C6","#FFFFFF","#0067C6"], Panama: ["#FFFFFF","#DA121A","#0033A0","#FFFFFF"], Paraguay: ["#D52B1E","#FFFFFF","#0038A8"],
+    Peru: ["#D91023","#FFFFFF","#D91023"], Uruguay: ["#FFFFFF","#0038A8"], Venezuela: ["#FFCC00","#0038A8","#CF142B"], Spain: ["#AA151B","#F1BF00","#AA151B"],
+  };
+  const stripes = stripeColors[name] || ["#999"];
+  const n = stripes.length; const sw = w / n; let rects = "";
+  for(let i=0;i<n;i++){ rects += `<rect x="${i*sw}" y="0" width="${sw+0.5}" height="${h}" fill="${stripes[i]}"/>`; }
+  return `<svg class="flag-icon" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="border-radius:1px;border:0.5px solid rgba(0,0,0,0.12)">${rects}</svg>`;
+}
+
+// --- D3.JS SCATTER PLOT CONFIG ---
+let selected = new Set();
+const margin = {top: 20, right: 30, bottom: 40, left: 45};
+let width, height;
+const chartDiv = d3.select("#chart");
+
+const svg = chartDiv.append("svg").style("overflow","visible");
+const gMain = svg.append("g");
+const gGrid = gMain.append("g").attr("class","grid");
+const gAxisX = gMain.append("g").attr("class","axis axis-x");
+const gAxisY = gMain.append("g").attr("class","axis axis-y");
+const gDots = gMain.append("g").attr("class","dots");
+const gHover = gMain.append("g");
+
+// Crosshairs (Líneas guías al pasar el cursor)
+const hairX = gMain.append("line").attr("class","hairline");
+const hairY = gMain.append("line").attr("class","hairline");
+const overlay = gMain.append("rect").attr("class","voronoi-overlay");
+
+const x = d3.scaleLinear();
+const y = d3.scaleLinear();
+let delaunay;
+
+function render(){
+  const rect = chartDiv.node().getBoundingClientRect();
+  width = Math.max(360, rect.width);
+  height = window.innerWidth < 920 ? 400 : 500; // Ajuste de altura responsivo
+
+  svg.attr("width", width).attr("height", height);
+  const innerW = width - margin.left - margin.right;
+  const innerH = height - margin.top - margin.bottom;
+
+  gMain.attr("transform", `translate(${margin.left},${margin.top})`);
+  
+  // Rangos: PIB hasta un poco más del maximo (1873 -> ~2000), Turismo (21 -> ~24)
+  x.domain([0, 2000]).range([0, innerW]);
+  y.domain([0, 24]).range([innerH, 0]);
+
+  // Grillas
+  gGrid.selectAll("line.gridline-h").data(y.ticks(6)).join("line")
+    .attr("class","gridline gridline-h")
+    .attr("x1",0).attr("x2",innerW)
+    .attr("y1", d=>y(d)).attr("y2", d=>y(d));
+    
+  gGrid.selectAll("line.gridline-v").data(x.ticks(10)).join("line")
+    .attr("class","gridline gridline-v").style("opacity", 0.5)
+    .attr("x1", d=>x(d)).attr("x2", d=>x(d))
+    .attr("y1", 0).attr("y2", innerH);
+
+  // Ejes
+  gAxisX.attr("transform", `translate(0,${innerH})`)
+    .call(d3.axisBottom(x).ticks(Math.min(10, innerW/70)).tickFormat(d => d + "B").tickSizeOuter(0));
+  gAxisY.call(d3.axisLeft(y).ticks(6).tickFormat(d => d + "B").tickSizeOuter(0));
+
+  // Puntos (Dispersión)
+  const circles = gDots.selectAll("circle.scatter-dot").data(rawData, d => d.id);
+  circles.join("circle")
+    .attr("class","scatter-dot")
+    .attr("data-name", d => d.id)
+    .attr("cx", d => x(d.pib))
+    .attr("cy", d => y(d.turismo))
+    .attr("r", 5.5)
+    .attr("fill", d => colorOf(d.id))
+    .attr("stroke", "#ffffff");
+
+  // Área de interacción invisible
+  overlay.attr("width", innerW).attr("height", innerH)
+    .on("mousemove", onMove)
+    .on("mouseleave", onLeave)
+    .on("click", onClick);
+
+  // Sistema de coordenadas espaciales para detectar el cursor exacto (Voronoi)
+  delaunay = d3.Delaunay.from(rawData, p => x(p.pib), p => y(p.turismo));
+  applyFilter();
+}
+
+const tooltip = d3.select("#tooltip");
+
+function onMove(event){
+  const [mx, my] = d3.pointer(event);
+  const idx = delaunay.find(mx, my);
+  const p = rawData[idx];
+  if(!p) return;
+
+  // Crosshairs interactivos
+  hairX.attr("x1", x(p.pib)).attr("x2", x(p.pib)).attr("y1", y(p.turismo)).attr("y2", height - margin.top - margin.bottom).style("opacity", 0.4);
+  hairY.attr("y1", y(p.turismo)).attr("y2", y(p.turismo)).attr("x1", 0).attr("x2", x(p.pib)).style("opacity", 0.4);
+
+  // Animar el punto (Hover ring)
+  gHover.selectAll("circle").data([p]).join("circle")
+    .attr("class","hover-dot")
+    .attr("cx", d=>x(d.pib)).attr("cy", d=>y(d.turismo))
+    .attr("r", 9)
+    .attr("stroke", colorOf(p.id));
+
+  // Mostrar y popular el Tooltip exigido
+  tooltip.style("display","block")
+    .style("left", (event.pageX + 18) + "px")
+    .style("top", (event.pageY - 18) + "px")
+    .html(`
+      <div class="t-name">
+        ${flagSVG(p.id, 16, 11)} 
+        ${displayOf(p.id)} 
+        <span class="t-code">${p.code}</span>
+      </div>
+      <div class="t-val"><span>PIB:</span> <span>${p.pib.toLocaleString('es-ES')} B</span></div>
+      <div class="t-sub" style="color:#ffffff;"><span>Turismo:</span> <span>${p.turismo.toLocaleString('es-ES')} B</span></div>
+    `);
+}
+
+function onLeave(){
+  hairX.style("opacity", 0);
+  hairY.style("opacity", 0);
+  gHover.selectAll("circle").remove();
+  tooltip.style("display","none");
+}
+
+function onClick(event){
+  const [mx, my] = d3.pointer(event);
+  const idx = delaunay.find(mx, my);
+  if(rawData[idx]) toggleSelect(rawData[idx].id);
+}
+
+window.addEventListener("resize", () => render());
+
+// --- LEYENDA E INTERACTIVIDAD ---
+const legendDiv = d3.select("#legend");
+function buildLegend(){
+  legendDiv.selectAll("*").remove();
+  rawData.forEach(d => {
+    const item = legendDiv.append("div")
+      .attr("class","legend-item")
+      .attr("data-name", d.id)
+      .on("click", () => toggleSelect(d.id));
+    item.html(`${flagSVG(d.id, 14, 10)}<span>${abbrOf(d.id)}</span>`);
+  });
+
+  legendDiv.append("button").attr("class","legend-reset").text("Restablecer vista").on("click", () => clearSelection());
+}
+
+function toggleSelect(name){
+  if(selected.has(name)) selected.delete(name);
+  else selected.add(name);
+  applyFilter();
+}
+function clearSelection(){
+  selected.clear();
+  applyFilter();
+}
+
+function applyFilter(){
+  const hasSelection = selected.size > 0;
+  d3.selectAll(".scatter-dot")
+    .classed("dim", d => hasSelection && !selected.has(d.id))
+    .classed("active", d => hasSelection && selected.has(d.id));
+    
+  d3.selectAll(".legend-item[data-name]").each(function(){
+    const n = this.getAttribute("data-name");
+    d3.select(this).classed("dim", hasSelection && !selected.has(n))
+      .classed("active", selected.has(n));
+  });
+}
+
+// Inicialización
+buildLegend();
+render();
+</script>
+
+</body>
+</html>
